@@ -3,24 +3,24 @@
 #include <LiquidCrystal.h>
 #include <Time.h>
 #include <String.h>
+#include <EEPROM.h>
+
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 String sys_time = "";
 const int lbtn = 8;
 const int rbtn = 9;
 const int cbtn = 6;
-const int ubtn = 7;
-const int dbtn = 10;
+const int leds_pin = 10;
 const int ledPin =  13;      // the number of the LED pin
 int ledState = LOW;
-int ubtn_state = 0;
-int dbtn_state = 0;
+int leds_state = LOW;
 int lbtn_state = 0;
 int rbtn_state = 0;
 int cbtn_state = 0;
 int last_cbtn_state = 0;
 int state = 0;
-
+long check_schedule_delay = 0;
 byte column_pos = 0;
 byte line_pos = 0;
 byte digit = 0;
@@ -36,8 +36,7 @@ void setup() {
   pinMode(lbtn, INPUT);
   pinMode(rbtn, INPUT);
   pinMode(cbtn, INPUT);
-  pinMode(ubtn,INPUT);
-  pinMode(dbtn,INPUT);
+  pinMode(leds_pin,OUTPUT);
   pinMode(ledPin,OUTPUT);
 }
 
@@ -187,7 +186,7 @@ void loop()
           state = 4; //change to set-schedule sub_menu
         }
         break;
-      case 4: //set-schedule sub_menu
+      case 4: //set-schedule sub_menu (on Time)
         lcd.clear();
         lcd.setCursor(0,0);
         set_time_string.concat(set_time[0]);
@@ -254,20 +253,109 @@ void loop()
         lcd.setCursor(column_pos,line_pos);
         if (column_pos > 7)
         {
-          set_sys_time(set_time); //change to store schedule
-          //store_schedule(set_time);
+          store_schedule(set_time,true);
+
           for (int count = 0;count <= 5;count++)
           {
             set_time[count] = 0;
           }
           column_pos = 0;
-          state = 0; //return to original state
+          state = 5; //change to off Time subsub menu
           lcd.clear();
           lcd.noCursor();
           delay(150);
 
         }
         break;
+      case 5: //set-schedule sub_menu (off Time)
+        lcd.clear();
+        lcd.setCursor(0,1);
+        set_time_string.concat(set_time[0]);
+        set_time_string.concat(set_time[1]);
+        set_time_string.concat(":");
+        set_time_string.concat(set_time[2]);
+        set_time_string.concat(set_time[3]);
+        set_time_string.concat(":");
+        set_time_string.concat(set_time[4]);
+        set_time_string.concat(set_time[5]);
+        //lcd.print("  :  :  ");      
+        lcd.print (set_time_string);
+        set_time_string = "";
+        line_pos = 1;
+        lcd.setCursor(column_pos,line_pos);
+        lcd.cursor();
+        while(cbtn_state == LOW)
+        {
+          cbtn_state = digitalRead(cbtn);
+          lbtn_state = digitalRead(lbtn);
+          rbtn_state = digitalRead(rbtn);
+          if (digit > 9) 
+          {
+            digit = 0;
+          }
+          if (rbtn_state == HIGH)
+          {
+            digit ++;
+            display_digit(digit);
+            rbtn_state = LOW;
+            delay(150);  
+          }
+          if (lbtn_state == HIGH)
+          {
+            digit --;
+            display_digit(digit);
+            lbtn_state = LOW;
+            delay(150);  
+          }
+        }//cbtn has been pressed
+        switch (column_pos) {
+            case 0:
+              set_time[0] = digit;
+              break;
+            case 1:
+              set_time[1] = digit;
+              break;
+            case 3:
+              set_time[2] = digit;
+              break;
+            case 4:
+              set_time[3] = digit;
+              break;
+            case 6:
+              set_time[4] = digit;
+              break;
+            case 7:
+              set_time[5] = digit;
+              break;
+        }//switch
+        digit = 0; //reset digit value
+        cbtn_state = LOW;
+        delay(150);
+        column_pos ++;
+        lcd.setCursor(column_pos,line_pos);
+        if (column_pos > 7)
+        {
+          store_schedule(set_time,false);
+
+          for (int count = 0;count <= 5;count++)
+          {
+            set_time[count] = 0;
+          }
+          column_pos = 0;
+          line_pos = 0;// also reset line_pos due to off time subsubmenu
+          state = 0; //return to original state
+          /*
+          for (int x = 0; x<12;x++)
+          {
+            Serial.print(EEPROM.read(x));  
+          }
+          */
+          lcd.clear();
+          lcd.noCursor();
+          delay(150);
+
+        }
+        break;  
       default:
         // do something
         int a = 0;
@@ -277,6 +365,11 @@ void loop()
   //lcd.setCursor(0, 1);
   // print the number of seconds since reset:
   //lcd.print(millis()/1000);
+  if((millis()-check_schedule_delay) > 30000)
+  {
+    check_schedule();
+    check_schedule_delay = millis();  
+  }
   
 }// void loop()
 
@@ -361,35 +454,82 @@ void display_digit(int digit)
   }
 }
 
-  bool debounce_btn (int btn,int btn_state,int last_btn_state,long last_debounce_time,int btn_delay)
+bool debounce_btn (int btn,int btn_state,int last_btn_state,long last_debounce_time,int btn_delay)
+{
+  int reading = digitalRead(btn);
+  if (reading != last_btn_state)
   {
-    int reading = digitalRead(btn);
-    if (reading != last_btn_state)
+    last_debounce_time = millis();
+  }
+  if ((millis() - last_debounce_time) > btn_delay) //btn has finished occilating
+  {
+    if (reading != btn_state) //btn is still pressed after 50 ms
     {
-      last_debounce_time = millis();
-    }
-    if ((millis() - last_debounce_time) > btn_delay) //btn has finished occilating
-    {
-      if (reading != btn_state) //btn is still pressed after 50 ms
-      {
-        btn_state = reading;
+      btn_state = reading;
 
-        if (btn_state == HIGH) //btn has been pressed
-        {
-          return true;
-          ledState = !ledState;
-        }
-        else
-        {
-          return false;
-        }
+      if (btn_state == HIGH) //btn has been pressed
+      {
+        return true;
+        ledState = !ledState;
+      }
+      else
+      {
+        return false;
       }
     }
-    digitalWrite(ledPin, ledState);
-    last_btn_state = reading;
+  }
+  digitalWrite(ledPin, ledState);
+  last_btn_state = reading;
+}
+
+void store_schedule (int time_array[6],bool on_time) // time and day of week
+{
+  if (on_time == true)
+  {
+    for (int add_range = 0; add_range < 6;  add_range ++)
+    {
+      EEPROM.write(add_range,time_array[add_range]);    
+    }  
+  }
+  else  // off_time
+  {
+    for (int add_range = 6; add_range < 12;  add_range ++)
+    {
+      EEPROM.write(add_range,time_array[(add_range-6)]);    
+    }  
+  }
+}//store_schedule
+
+void check_schedule ()
+{
+  int scd_hour = (EEPROM.read(0) * 10) + EEPROM.read(1);
+  int scd_min = (EEPROM.read(2) * 10) + EEPROM.read(3);
+  int scd_hour_off = (EEPROM.read(6) * 10) + EEPROM.read(7);
+  int scd_min_off = (EEPROM.read(8) * 10) + EEPROM.read(9);
+  /*
+  Serial.print("scd_hour : ");
+  Serial.print(scd_hour);
+  Serial.println();
+  Serial.print("scd_min : ");
+  Serial.print(scd_min);
+  Serial.println();
+  Serial.print("hour : ");
+  Serial.print(hour());
+  Serial.println();
+  Serial.print("mins : ");
+  Serial.print(minute());
+  Serial.println();
+  */
+  if ((scd_hour == hour()) && (scd_min == minute())) // "on" scheduled time has been reached
+  {
+    leds_state = HIGH;
+    //Serial.println("leds ON");
+  }
+  if ((leds_state == HIGH) && (scd_hour_off == hour()) && (scd_min_off == minute())) // "off" scheduled time has been reached and leds where allready "on"
+  {
+    leds_state = LOW;
+    //Serial.println("leds OFF");
   }
 
-void set_schedule(int schedule_time)
-{
-  
-}
+  digitalWrite(leds_pin, leds_state);
+}//check schedule
