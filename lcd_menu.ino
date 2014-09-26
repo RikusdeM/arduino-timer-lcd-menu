@@ -184,7 +184,88 @@ void loop()
         cbtn_state = LOW;
         if (state != 1)
         {
-          state = 0; //change to set-schedule sub_menu
+          state = 4; //change to set-schedule sub_menu
+        }
+        break;
+      case 4: //set-schedule sub_menu
+        lcd.clear();
+        lcd.setCursor(0,0);
+        set_time_string.concat(set_time[0]);
+        set_time_string.concat(set_time[1]);
+        set_time_string.concat(":");
+        set_time_string.concat(set_time[2]);
+        set_time_string.concat(set_time[3]);
+        set_time_string.concat(":");
+        set_time_string.concat(set_time[4]);
+        set_time_string.concat(set_time[5]);
+        //lcd.print("  :  :  ");      
+        lcd.print (set_time_string);
+        set_time_string = "";
+        lcd.setCursor(column_pos,line_pos);
+        lcd.cursor();
+        while(cbtn_state == LOW)
+        {
+          cbtn_state = digitalRead(cbtn);
+          lbtn_state = digitalRead(lbtn);
+          rbtn_state = digitalRead(rbtn);
+          if (digit > 9) 
+          {
+            digit = 0;
+          }
+          if (rbtn_state == HIGH)
+          {
+            digit ++;
+            display_digit(digit);
+            rbtn_state = LOW;
+            delay(150);  
+          }
+          if (lbtn_state == HIGH)
+          {
+            digit --;
+            display_digit(digit);
+            lbtn_state = LOW;
+            delay(150);  
+          }
+        }//cbtn has been pressed
+        switch (column_pos) {
+            case 0:
+              set_time[0] = digit;
+              break;
+            case 1:
+              set_time[1] = digit;
+              break;
+            case 3:
+              set_time[2] = digit;
+              break;
+            case 4:
+              set_time[3] = digit;
+              break;
+            case 6:
+              set_time[4] = digit;
+              break;
+            case 7:
+              set_time[5] = digit;
+              break;
+        }//switch
+        digit = 0; //reset digit value
+        cbtn_state = LOW;
+        delay(150);
+        column_pos ++;
+        lcd.setCursor(column_pos,line_pos);
+        if (column_pos > 7)
+        {
+          set_sys_time(set_time); //change to store schedule
+          //store_schedule(set_time);
+          for (int count = 0;count <= 5;count++)
+          {
+            set_time[count] = 0;
+          }
+          column_pos = 0;
+          state = 0; //return to original state
+          lcd.clear();
+          lcd.noCursor();
+          delay(150);
+
         }
         break;
       default:
@@ -307,3 +388,8 @@ void display_digit(int digit)
     digitalWrite(ledPin, ledState);
     last_btn_state = reading;
   }
+
+void set_schedule(int schedule_time)
+{
+  
+}
