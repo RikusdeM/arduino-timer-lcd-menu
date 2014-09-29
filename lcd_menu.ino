@@ -26,6 +26,8 @@ byte line_pos = 0;
 byte digit = 0;
 int set_time[6] = {0,0,0,0,0,0};
 String set_time_string = "";
+long last_cbtn_debounce_time = 0;
+bool cbtn_pressed = false;
 
 void setup() {
   // set up the LCD's number of columns and rows: 
@@ -46,6 +48,16 @@ void loop()
   {
     display_time();
     cbtn_state = digitalRead(cbtn);
+    /*
+    cbtn_pressed = debounce_btn (cbtn,cbtn_state,last_cbtn_state,last_cbtn_debounce_time,50);
+    if (cbtn_pressed == true)
+    {
+      state = 1;
+      cbtn_pressed = false;
+    }
+    cbtn_state = LOW;
+    delay(150);
+    */    
     if (cbtn_state == HIGH)
     {
       state = 1;
@@ -171,6 +183,7 @@ void loop()
         {
           cbtn_state = digitalRead(cbtn);
           lbtn_state = digitalRead(lbtn);
+          rbtn_state = digitalRead(rbtn);
           if (lbtn_state == HIGH)
           {
             state = 1;
@@ -178,10 +191,17 @@ void loop()
             lbtn_state = LOW;            
             cbtn_state = HIGH; // act as button pressed
           }
+          if (rbtn_state == HIGH)
+          {
+            state = 6;
+            delay(150);
+            rbtn_state = LOW;            
+            cbtn_state = HIGH; // act as button pressed
+          }
         }//cbtn has been pressed
         delay(150);
         cbtn_state = LOW;
-        if (state != 1)
+        if ((state != 1) && (state != 6))
         {
           state = 4; //change to set-schedule sub_menu
         }
@@ -356,6 +376,31 @@ void loop()
 
         }
         break;  
+      case 6: // 3. Go Back
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("3. Go ");
+        lcd.setCursor(0,1);
+        lcd.print ("Back");
+        while (cbtn_state == LOW) //wait for cbrn to be pressed
+        {
+          cbtn_state = digitalRead(cbtn);
+          lbtn_state = digitalRead(lbtn);
+          if (lbtn_state == HIGH)
+          {
+            state = 3;
+            delay(150);
+            lbtn_state = LOW;            
+            cbtn_state = HIGH; // act as button pressed
+          }
+        }//cbtn has been pressed
+        delay(150);
+        cbtn_state = LOW;
+        if (state != 3)
+        {
+          state = 0; //change to base state
+        }
+        break;  
       default:
         // do something
         int a = 0;
@@ -463,20 +508,16 @@ bool debounce_btn (int btn,int btn_state,int last_btn_state,long last_debounce_t
   }
   if ((millis() - last_debounce_time) > btn_delay) //btn has finished occilating
   {
-    if (reading != btn_state) //btn is still pressed after 50 ms
+    if ((reading == HIGH) && (last_btn_state == HIGH)) //btn has been pressed
     {
-      btn_state = reading;
-
-      if (btn_state == HIGH) //btn has been pressed
-      {
-        return true;
-        ledState = !ledState;
-      }
-      else
-      {
-        return false;
-      }
+      return true;
+      ledState = !ledState;
     }
+    else
+    {
+      return false;
+    }
+    
   }
   digitalWrite(ledPin, ledState);
   last_btn_state = reading;
