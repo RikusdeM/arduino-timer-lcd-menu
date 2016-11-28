@@ -1,7 +1,12 @@
+#include <Time.h>
+#include <TimeLib.h>
+
 // lcd_menu.ino
 // include the library code:
 #include <LiquidCrystal.h>
-#include <Time.h>
+
+
+
 #include <String.h>
 #include <EEPROM.h>
 
@@ -26,6 +31,9 @@ byte line_pos = 0;
 byte digit = 0;
 int set_time[6] = {0,0,0,0,0,0};
 String set_time_string = "";
+int set_PWM[3] = {0,0,0};
+String set_PWM_string = "";
+int currentPWM = 0;
 long last_cbtn_debounce_time = 0;
 bool cbtn_pressed = false;
 
@@ -34,12 +42,18 @@ void setup() {
   lcd.begin(16, 2);
   Serial.begin(9600);
   // Print a message to the LCD.
-  setTime(16,20,0,1,1,2014); //hr,min,sec,day,month,yr	
+  setTime(16,20,0,1,1,2014); //hr,min,sec,day,month,yr  
   pinMode(lbtn, INPUT);
   pinMode(rbtn, INPUT);
   pinMode(cbtn, INPUT);
   pinMode(leds_pin,OUTPUT);
   pinMode(ledPin,OUTPUT);
+
+  TCCR1A = _BV(COM1A1) | _BV(COM1B1) | _BV(WGM10); // = 10100001
+  TCCR1B = _BV(WGM12) | _BV(CS11) | _BV(CS10); // = 00001010
+  OCR1B = 0; // 255 duty B
+  //16 bit timer 1 (set up as 8 bit timer with fast pwm)
+
 }
 
 void loop() 
@@ -376,10 +390,104 @@ void loop()
 
         }
         break;  
-      case 6: // 3. Go Back
+      case 6: // 3.Set PWM menu
         lcd.clear();
         lcd.setCursor(0,0);
-        lcd.print("3. Go ");
+        lcd.print("3. Set");
+        lcd.setCursor(0,1);
+        lcd.print ("PWM");
+        while (cbtn_state == LOW) //wait for cbrn to be pressed
+        {
+          cbtn_state = digitalRead(cbtn); //update btn states
+          rbtn_state = digitalRead(rbtn);
+          lbtn_state = digitalRead(lbtn);
+          if(rbtn_state == HIGH)
+          {
+            //digitalWrite(ledPin, HIGH);
+            state = 8;
+            delay(150);
+            rbtn_state = LOW;            
+            cbtn_state = HIGH; // act as button pressed
+          } //rbtn pressed
+        }//cbtn has been pressed
+        cbtn_state = LOW;
+        lcd.clear();
+        delay(150);
+        if (state == 6)
+        {
+          state = 7; // should be 7 for PWM submenu
+        }
+        break;
+       case 7: // Set PWM sub-menu
+        lcd.setCursor(0,0);
+        set_PWM_string.concat(set_PWM[0]);
+        set_PWM_string.concat(set_PWM[1]);
+        set_PWM_string.concat(set_PWM[2]);
+        set_PWM_string.concat("%");
+       
+        //lcd.print("  :  :  ");      
+        lcd.print (set_PWM_string);
+        set_PWM_string = "";
+        lcd.setCursor(column_pos,line_pos);
+        lcd.cursor();
+        while(cbtn_state == LOW)
+        {
+          cbtn_state = digitalRead(cbtn);
+          lbtn_state = digitalRead(lbtn);
+          rbtn_state = digitalRead(rbtn);
+          if (digit > 9) 
+          {
+            digit = 0;
+          }
+          if (rbtn_state == HIGH)
+          {
+            digit ++;
+            display_digit(digit);
+            rbtn_state = LOW;
+            delay(150);  
+          }
+          if (lbtn_state == HIGH)
+          {
+            digit --;
+            display_digit(digit);
+            lbtn_state = LOW;
+            delay(150);  
+          }
+        }//cbtn has been pressed
+        switch (column_pos) {
+            case 0:
+              set_PWM[0] = digit;
+              break;
+            case 1:
+              set_PWM[1] = digit;
+              break;
+            case 2:
+              set_PWM[2] = digit;
+              break;
+        }//switch
+        digit = 0; //reset digit value
+        cbtn_state = LOW;
+        delay(150);
+        column_pos ++;
+        lcd.setCursor(column_pos,line_pos);
+        if (column_pos > 2)
+        {
+          currentPWM = set_led_pwm(set_PWM);      
+          for (int count = 0;count <= 2;count++)
+          {
+            set_PWM[count] = 0;
+          }
+          column_pos = 0;
+          state = 0; //return to original state
+          lcd.clear();
+          lcd.noCursor();
+          delay(150);
+        }
+        break;
+      case 8: // 4. Go Back
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("4. Go ");
         lcd.setCursor(0,1);
         lcd.print ("Back");
         while (cbtn_state == LOW) //wait for cbrn to be pressed
@@ -388,7 +496,7 @@ void loop()
           lbtn_state = digitalRead(lbtn);
           if (lbtn_state == HIGH)
           {
-            state = 3;
+            state = 6;
             delay(150);
             lbtn_state = LOW;            
             cbtn_state = HIGH; // act as button pressed
@@ -396,7 +504,7 @@ void loop()
         }//cbtn has been pressed
         delay(150);
         cbtn_state = LOW;
-        if (state != 3)
+        if (state != 6)
         {
           state = 0; //change to base state
         }
@@ -428,7 +536,7 @@ void display_time()
   sys_time.concat(minute());
   sys_time.concat(":");
   sys_time.concat(second());
-	lcd.print(sys_time);
+  lcd.print(sys_time);
 }
 
 void set_sys_time (int time_array[6])
@@ -451,6 +559,25 @@ void set_sys_time (int time_array[6])
   
   setTime(hrs,mns,sec,1,1,2014); //hr,min,sec,day,month,yr  
   
+}
+int set_led_pwm(int duty_array[3])
+{
+  int totalPerc = 0;
+  for (int x = 0; x < sizeof(duty_array); x++)
+  {
+    switch(x){
+      case 0:
+        totalPerc = totalPerc + 100*duty_array[x];
+        break;        
+      case 1:
+         totalPerc = totalPerc + 10*duty_array[x];
+         break;
+      case 2:
+        totalPerc = totalPerc + duty_array[x];
+        break;
+    }
+  }
+  return totalPerc;
 }
 
 void display_digit(int digit)
@@ -571,6 +698,14 @@ void check_schedule ()
     leds_state = LOW;
     //Serial.println("leds OFF");
   }
-
-  digitalWrite(leds_pin, leds_state);
+//  digitalWrite(leds_pin, leds_state);
+  if(leds_state == LOW){
+      OCR1B = 0;
+      digitalWrite(leds_pin, LOW);
+  }
+  else{
+   digitalWrite(leds_pin, HIGH);
+    OCR1B = currentPWM;
+  }
+ Serial.print(currentPWM);
 }//check schedule
